@@ -253,9 +253,9 @@ async function processVideo(rawPath, mediaId, options = {}) {
 
   return {
     sha256,
-    width: probeOut.width,
-    height: probeOut.height,
-    durationMs: Math.round(probeOut.duration * 1000),
+    width: probeData.width,
+    height: probeData.height,
+    durationMs: Math.round(probeData.duration * 1000),
     orientation: null,
     variants,
   };
