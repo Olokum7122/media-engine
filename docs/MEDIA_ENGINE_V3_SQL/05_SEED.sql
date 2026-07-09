@@ -72,9 +72,9 @@ BEGIN TRY
     BEGIN
         INSERT INTO me.watermark_profile (watermark_profile_code, display_name, position_code, opacity, margin_px, max_width_percent, is_active) VALUES
         (N'none', N'No Watermark', N'none', 0.00, 0, 0.00, 1),
-        (N'antojados_default', N'Antojados Default', N'bottom_right', 0.70, 32, 18.00, 1),
-        (N'official_antojados', N'Official Antojados', N'bottom_right', 0.75, 32, 18.00, 1),
-        (N'sponsor_light', N'Sponsor Light', N'bottom_right', 0.55, 32, 15.00, 1);
+        (N'antojados_default', N'Antojados Default', N'bottom_left', 0.30, 24, 15.00, 1),
+        (N'official_antojados', N'Official Antojados', N'bottom_left', 0.30, 24, 15.00, 1),
+        (N'sponsor_light', N'Sponsor Light', N'bottom_left', 0.30, 24, 15.00, 1);
     END;
 
     COMMIT TRANSACTION;

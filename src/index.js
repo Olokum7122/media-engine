@@ -3,10 +3,26 @@
 /**
  * ATLX Media Engine V3 — Punto de entrada principal.
  *
- * Integra:
- *   - API REST (Express)
- *   - Processing Worker (background)
- *   - Sirve archivos estáticos (variantes de media)
+ * ══════════════════════════════════════════════════════════════════════════════
+ * DOMINIO:      ATLX Media Engine — Procesamiento multimedia multi-servicio
+ * RESPONSABLE:  Integrar API REST, worker background, servir archivos estáticos
+ *
+ * NO HACE:
+ *   - No conoce de posts, sponsors ni usuarios (dominio de cada servicio)
+ *   - No tiene lógica de negocio específica de Antojados o Explorer
+ *   - No decide políticas de derechos (lo hace policyEvaluator)
+ *
+ * SERVICIOS REGISTRADOS:
+ *   - antojados  → AntojadosMX (App Social + Negocios)
+ *   - explorer   → Explorer App (Descubrimiento de lugares)
+ *   - generic    → Fallback para servicios no registrados
+ *
+ * ENTRY POINTS:
+ *   API:   GET /health, POST /api/media/requests, POST /api/media/:id/original, etc.
+ *   Admin: GET /api/admin/services (lista servicios registrados)
+ *
+ * MODELO DE DATOS: media-engine/docs/ (tablas me.*)
+ * ══════════════════════════════════════════════════════════════════════════════
  */
 
 const express = require('express');
@@ -14,7 +30,32 @@ const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const mediaRoutes = require('./routes/mediaRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const processingWorker = require('./services/mediaEngine/processingWorker');
+const serviceRegistry = require('./services/serviceRegistry');
+
+// ─── Registro de servicios ──────────────────────────────────────────────────
+
+// Servicio: AntojadosMX
+const antojadosChannelProfileMapper = require('./adapters/antojados/channelProfileMapper');
+const antojadosPackageMapper = require('./adapters/antojados/mediaPackageMapper');
+serviceRegistry.registerService('antojados', {
+  channelProfileMapper: antojadosChannelProfileMapper,
+  mediaPackageMapper: antojadosPackageMapper,
+});
+
+// Servicio: Explorer App
+serviceRegistry.registerService('explorer', {
+  // Explorer usa perfiles standard por ahora
+  channelProfileMapper: antojadosChannelProfileMapper, // comparte el perfil de Antojados
+  mediaPackageMapper: antojadosPackageMapper,
+});
+
+// Servicio: Generic (fallback)
+const genericProfileMapper = require('./adapters/generic/profileMapper');
+serviceRegistry.registerService('generic', {
+  channelProfileMapper: genericProfileMapper,
+});
 
 const app = express();
 
@@ -37,6 +78,7 @@ app.get('/health', (_req, res) => {
     service: 'Atlx_MediaEngine_V3',
     status: 'ok',
     version: '3.0.0',
+    services: serviceRegistry.listServices().map(s => s.sourceApp),
     uptime: process.uptime(),
   });
 });
@@ -44,6 +86,7 @@ app.get('/health', (_req, res) => {
 // ─── API Routes ────────────────────────────────────────────────────────────
 
 app.use(mediaRoutes);
+app.use(adminRoutes);
 
 // ─── Error Handler ─────────────────────────────────────────────────────────
 
@@ -71,6 +114,7 @@ async function start() {
   app.listen(config.port, () => {
     console.log(`[Atlx_MediaEngine_V3] Servidor iniciado en puerto ${config.port}`);
     console.log(`[Atlx_MediaEngine_V3] Media base URL: ${config.mediaBaseUrl}`);
+    console.log(`[Atlx_MediaEngine_V3] Servicios registrados: ${serviceRegistry.listServices().map(s => s.sourceApp).join(', ')}`);
 
     // Iniciar worker de procesamiento background
     processingWorker.start();

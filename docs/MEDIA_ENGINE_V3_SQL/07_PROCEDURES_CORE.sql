@@ -84,8 +84,14 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM me.media_request WHERE media_id = @media_id)
         THROW 51001, N''MEDIA_NOT_FOUND'', 1;
 
+    -- ⚠️ NOTA: No se requiere derechos registrados para subir original.
+    -- El autor declara derechos/origen por separado. El Engine nunca bloquea uploads.
+    -- Si no hay derechos registrados, se registra un evento warning y continúa.
     IF NOT EXISTS (SELECT 1 FROM me.media_rights_origin WHERE media_id = @media_id)
-        THROW 51010, N''RIGHTS_ORIGIN_REQUIRED'', 1;
+    BEGIN
+        INSERT INTO me.media_event_log (media_id, event_code, event_message)
+        VALUES (@media_id, N''RIGHTS_NOT_REGISTERED'', N''No se registraron derechos/origen. El contenido se procesa igualmente. El autor es responsable.'');
+    END;
 
     INSERT INTO me.media_original (
         media_id, original_file_name, original_url, original_storage_path, mime_type,

@@ -3,12 +3,31 @@
 /**
  * mediaProcessorV3.js — Procesamiento de imágenes y videos según especificación V3.
  *
- * Variantes oficiales:
- *   Imágenes: thumb (320x320), grid (600x600), feed (1080x1350), full (1440),
- *             story (1080x1920), cover (1080x608), avatar (512x512)
- *   Videos:   short (1080x1920), feed_video (1080x1350/1920), video_preview (720x1280)
+ * ══════════════════════════════════════════════════════════════════════════════
+ * DOMINIO:      Media Engine — Pipeline de procesamiento multimedia
+ * RESPONSABLE:  Generar variantes normalizadas de imágenes y video
  *
- * Almacenamiento: /media/{yyyy}/{mm}/{media_id}/{variant}.{ext}
+ * NO HACE:
+ *   - No decide processing_profile_code (lo resuelve channelProfileMapper)
+ *   - No crea media_request (lo hace requestRoutes)
+ *   - No evalúa políticas de derechos (lo hace policyEvaluator)
+ *   - No escribe en BD (lo hace variantService / originalService)
+ *
+ * VARIANTES OFICIALES (siempre se generan):
+ *   thumb, grid, feed, full, story, cover, avatar → imágenes
+ *   short, feed_video, video_preview → video
+ *
+ * PERFILES DE PROCESAMIENTO:
+ *   Las dimensiones de thumb, feed y full varían según el processing_profile_code
+ *   definido en channelProfileMapper. Si no hay perfil, usa dimensiones standard.
+ *
+ * ALMACENAMIENTO: /media/{yyyy}/{mm}/{media_id}/{variant}.{ext}
+ *
+ * REFERENCIAS:
+ *   - channelProfileMapper.js → resolveProfile(channel, mediaType, orientation)
+ *   - processingWorker.js → orquesta el pipeline completo
+ *   - variantService.js → upsertVariant en me.media_variant
+ * ══════════════════════════════════════════════════════════════════════════════
  */
 
 const sharp = require('sharp');
@@ -23,17 +42,53 @@ const config = require('../../config');
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
-// ─── Configuración de variantes según especificación V3 ─────────────────────
+// ─── Perfiles de Procesamiento (según Sección 9 de feed.md) ─────────────────
+// thumb, feed y full varían según orientación. grid, story, cover, avatar son fijos.
+// ─────────────────────────────────────────────────────────────────────────────
 
-const IMAGE_VARIANTS = [
-  { code: 'thumb', width: 320, height: 320, fit: 'cover', mimeType: 'image/jpeg', ext: 'jpg', quality: 80, isPublic: true },
+const PROCESSING_PROFILES = {
+  standard: {
+    // Compatibilidad hacia atrás: dimensiones originales V3
+    thumb:  { width: 320, height: 320, fit: 'cover' },
+    feed:   { width: 1080, height: 1350, fit: 'inside' },
+    full:   { width: 1440, height: null, fit: 'inside' },
+  },
+  portrait_standard: {
+    // 3:5 — 24×40 grid
+    thumb: { width: 384, height: 640, fit: 'cover' },
+    feed:  { width: 576, height: 960, fit: 'inside' },
+    full:  { width: 1080, height: 1800, fit: 'inside' },
+  },
+  landscape_standard: {
+    // 5:3 — 40×24 grid
+    thumb: { width: 640, height: 384, fit: 'cover' },
+    feed:  { width: 960, height: 576, fit: 'inside' },
+    full:  { width: 1800, height: 1080, fit: 'inside' },
+  },
+  square_standard: {
+    // 1:1 — 30×30 grid
+    thumb: { width: 320, height: 320, fit: 'cover' },
+    feed:  { width: 800, height: 800, fit: 'inside' },
+    full:  { width: 1440, height: 1440, fit: 'inside' },
+  },
+  short_vertical: {
+    // 9:16 — solo video, thumb/feed como preview imagen
+    thumb: { width: 240, height: 427, fit: 'cover' },
+    feed:  { width: 480, height: 854, fit: 'inside' },
+    full:  { width: 1080, height: 1920, fit: 'inside' },
+  },
+};
+
+// ─── Variantes fijas (independientes del perfil) ───────────────────────────
+
+const FIXED_IMAGE_VARIANTS = [
   { code: 'grid', width: 600, height: 600, fit: 'cover', mimeType: 'image/jpeg', ext: 'jpg', quality: 82, isPublic: true },
-  { code: 'feed', width: 1080, height: 1350, fit: 'inside', mimeType: 'image/jpeg', ext: 'jpg', quality: 85, isPublic: true },
-  { code: 'full', width: 1440, height: null, fit: 'inside', mimeType: 'image/jpeg', ext: 'jpg', quality: 88, isPublic: true },
   { code: 'story', width: 1080, height: 1920, fit: 'inside', mimeType: 'image/jpeg', ext: 'jpg', quality: 85, isPublic: true },
   { code: 'cover', width: 1080, height: 608, fit: 'cover', mimeType: 'image/jpeg', ext: 'jpg', quality: 85, isPublic: true },
   { code: 'avatar', width: 512, height: 512, fit: 'cover', mimeType: 'image/jpeg', ext: 'jpg', quality: 80, isPublic: true },
 ];
+
+// ─── Variantes de video (fijas) ─────────────────────────────────────────────
 
 const VIDEO_VARIANTS = [
   { code: 'short', width: 1080, height: 1920, mimeType: 'video/mp4', ext: 'mp4', videoBitrate: '2000k', audioBitrate: '128k', fps: 30, isPublic: true },
@@ -77,6 +132,13 @@ function _getAspectRatio(width, height) {
   return `${width / divisor}:${height / divisor}`;
 }
 
+function _detectOrientation(width, height) {
+  if (!width || !height) return 'square';
+  if (width > height) return 'landscape';
+  if (width < height) return 'portrait';
+  return 'square';
+}
+
 function _detectExtension(mimeType) {
   const map = {
     'image/jpeg': 'jpg',
@@ -92,80 +154,109 @@ function _detectExtension(mimeType) {
 // ─── Procesamiento de Imágenes ──────────────────────────────────────────────
 
 /**
- * Procesa una imagen generando todas las variantes V3.
+ * Procesa una imagen generando variantes según perfil de procesamiento.
  *
  * @param {string} rawPath       - Ruta absoluta al archivo original
  * @param {string} mediaId       - UUID del media
  * @param {object} [options]
- * @param {boolean} [options.applyWatermark]   - Si aplicar watermark
- * @param {string} [options.watermarkPath]     - Ruta del logo de watermark
- * @returns {Promise<Array>}     - Lista de objetos variante
+ * @param {boolean} [options.applyWatermark]       - Si aplicar watermark
+ * @param {string} [options.watermarkPath]         - Ruta del logo de watermark
+ * @param {string} [options.processingProfileCode] - Código del perfil (standard, portrait_standard, etc.)
+ * @returns {Promise<object>}    - { sha256, width, height, orientation, variants }
  */
 async function processImage(rawPath, mediaId, options = {}) {
   const metadata = await sharp(rawPath).metadata();
   const sha256 = await _computeSha256(rawPath);
+  const profileCode = options.processingProfileCode || 'standard';
+  const profile = PROCESSING_PROFILES[profileCode] || PROCESSING_PROFILES.standard;
   const variants = [];
 
-  for (const v of IMAGE_VARIANTS) {
-    const storagePath = _buildStoragePath(mediaId, v.code, v.ext);
-    const absolutePath = path.join(config.uploadsDir, storagePath);
-    _ensureDir(absolutePath);
+  // 1. Variantes dependientes del perfil: thumb, feed, full
+  const profileVariants = [
+    { code: 'thumb', ...profile.thumb, mimeType: 'image/jpeg', ext: 'jpg', quality: 80, isPublic: true },
+    { code: 'feed', ...profile.feed, mimeType: 'image/jpeg', ext: 'jpg', quality: 85, isPublic: true },
+    { code: 'full', ...profile.full, mimeType: 'image/jpeg', ext: 'jpg', quality: 88, isPublic: true },
+  ];
 
-    const resizeOptions = {
-      withoutEnlargement: true,
-    };
-
-    if (v.fit === 'cover') {
-      resizeOptions.width = v.width;
-      resizeOptions.height = v.height;
-      resizeOptions.fit = 'cover';
-      resizeOptions.position = 'centre';
-    } else {
-      resizeOptions.width = v.width;
-      if (v.height) resizeOptions.height = v.height;
-      resizeOptions.fit = 'inside';
-    }
-
-    let pipeline = sharp(rawPath).resize(resizeOptions);
-
-    // Aplicar watermark si es necesario
-    if (options.applyWatermark && options.watermarkPath && fs.existsSync(options.watermarkPath)) {
-      pipeline = pipeline.composite([{
-        input: options.watermarkPath,
-        gravity: 'southeast',
-        blend: 'over',
-        opacity: 0.7,
-      }]);
-    }
-
-    await pipeline.jpeg({ quality: v.quality, mozjpeg: true }).toFile(absolutePath);
-
-    const resultMeta = await sharp(absolutePath).metadata();
-
-    variants.push({
-      mediaId,
-      variantCode: v.code,
-      mediaType: 'image',
-      url: _buildUrl(storagePath),
-      storagePath,
-      mimeType: v.mimeType,
-      width: resultMeta.width,
-      height: resultMeta.height,
-      sizeBytes: fs.statSync(absolutePath).size,
-      aspectRatio: _getAspectRatio(resultMeta.width, resultMeta.height),
-      hasWatermark: Boolean(options.applyWatermark),
-      isPublic: v.isPublic,
-      processingProfileCode: 'standard',
-      profileVersion: 1,
-    });
+  for (const v of profileVariants) {
+    const variant = await _processSingleImage(rawPath, mediaId, v, options);
+    variant.processingProfileCode = profileCode;
+    variant.profileVersion = 2;
+    variants.push(variant);
   }
+
+  // 2. Variantes fijas (independientes del perfil)
+  for (const v of FIXED_IMAGE_VARIANTS) {
+    const variant = await _processSingleImage(rawPath, mediaId, v, options);
+    variant.processingProfileCode = 'standard';
+    variant.profileVersion = 1;
+    variants.push(variant);
+  }
+
+  // 3. Detectar orientación
+  const orientation = _detectOrientation(metadata.width, metadata.height);
 
   return {
     sha256,
     width: metadata.width,
     height: metadata.height,
-    orientation: metadata.orientation ? String(metadata.orientation) : null,
+    orientation,
     variants,
+  };
+}
+
+/**
+ * Procesa una variante individual de imagen.
+ */
+async function _processSingleImage(rawPath, mediaId, variantDef, options) {
+  const storagePath = _buildStoragePath(mediaId, variantDef.code, variantDef.ext);
+  const absolutePath = path.join(config.uploadsDir, storagePath);
+  _ensureDir(absolutePath);
+
+  const resizeOptions = {
+    withoutEnlargement: true,
+  };
+
+  if (variantDef.fit === 'cover') {
+    resizeOptions.width = variantDef.width;
+    resizeOptions.height = variantDef.height;
+    resizeOptions.fit = 'cover';
+    resizeOptions.position = 'centre';
+  } else {
+    resizeOptions.width = variantDef.width;
+    if (variantDef.height) resizeOptions.height = variantDef.height;
+    resizeOptions.fit = 'inside';
+  }
+
+  let pipeline = sharp(rawPath).resize(resizeOptions);
+
+  // Aplicar watermark si es necesario
+  if (options.applyWatermark && options.watermarkPath && fs.existsSync(options.watermarkPath)) {
+    pipeline = pipeline.composite([{
+      input: options.watermarkPath,
+      gravity: 'southeast',
+      blend: 'over',
+      opacity: 0.7,
+    }]);
+  }
+
+  await pipeline.jpeg({ quality: variantDef.quality, mozjpeg: true }).toFile(absolutePath);
+
+  const resultMeta = await sharp(absolutePath).metadata();
+
+  return {
+    mediaId,
+    variantCode: variantDef.code,
+    mediaType: 'image',
+    url: _buildUrl(storagePath),
+    storagePath,
+    mimeType: variantDef.mimeType,
+    width: resultMeta.width,
+    height: resultMeta.height,
+    sizeBytes: fs.statSync(absolutePath).size,
+    aspectRatio: _getAspectRatio(resultMeta.width, resultMeta.height),
+    hasWatermark: Boolean(options.applyWatermark),
+    isPublic: variantDef.isPublic,
   };
 }
 
@@ -177,6 +268,7 @@ async function processImage(rawPath, mediaId, options = {}) {
  * @param {string} rawPath
  * @param {string} mediaId
  * @param {object} [options]
+ * @param {string} [options.processingProfileCode] - Perfil de procesamiento (short_vertical, etc.)
  * @returns {Promise<object>}
  */
 async function processVideo(rawPath, mediaId, options = {}) {
@@ -215,8 +307,8 @@ async function processVideo(rawPath, mediaId, options = {}) {
     aspectRatio: _getAspectRatio(previewMeta.width, previewMeta.height),
     hasWatermark: false,
     isPublic: true,
-    processingProfileCode: 'standard',
-    profileVersion: 1,
+    processingProfileCode: options.processingProfileCode || 'short_vertical',
+    profileVersion: 2,
   });
 
   // 2. Variantes de video
@@ -246,8 +338,8 @@ async function processVideo(rawPath, mediaId, options = {}) {
       fps: v.fps,
       hasWatermark: Boolean(options.applyWatermark),
       isPublic: v.isPublic,
-      processingProfileCode: 'standard',
-      profileVersion: 1,
+      processingProfileCode: options.processingProfileCode || 'short_vertical',
+      profileVersion: 2,
     });
   }
 
@@ -304,4 +396,8 @@ function _transcodeVideo(inputPath, outputPath, variant) {
   });
 }
 
-module.exports = { processImage, processVideo, IMAGE_VARIANTS, VIDEO_VARIANTS };
+module.exports = {
+  processImage, processVideo,
+  PROCESSING_PROFILES, FIXED_IMAGE_VARIANTS, VIDEO_VARIANTS,
+  _detectOrientation,
+};

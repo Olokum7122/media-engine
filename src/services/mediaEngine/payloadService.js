@@ -3,11 +3,28 @@
 /**
  * payloadService.js — Servicio para obtener ready payloads.
  *
+ * ══════════════════════════════════════════════════════════════════════════════
+ * DOMINIO:      Media Engine — Payloads listos para consumo
+ * RESPONSABLE:  Construir el ready-payload con URLs de variantes, metadata
+ *               y estado de derechos
+ *
+ * NO HACE:
+ *   - No procesa media (lo hace mediaProcessorV3)
+ *   - No evalúa políticas (lo hace policyEvaluator)
+ *   - No consume el mapper de Gateway (lo hace engineClient.js en el Gateway)
+ *   - No sabe de canales de Antojados (lo sabe channelProfileMapper)
+ *
  * SPs utilizados:
  *   me.sp_media_get_ready_payload
  *
  * Vista:
  *   me.v_media_ready_payload
+ *
+ * REFERENCIAS:
+ *   - engineClient.js (Gateway) → consume getReadyPayload()
+ *   - mediaPackageMapper.js → mapea engine → Gateway (camelCase → snake_case)
+ *   - apps-antojados/docs/feed.md (Sección 10.2: Ready Payload)
+ * ══════════════════════════════════════════════════════════════════════════════
  */
 
 const { getPool, sql } = require('../../db');
