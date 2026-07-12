@@ -52,35 +52,73 @@ review generated variants
 publish to Antojados context
 ```
 
-## 5. Rendering Rules
+## 5. Matriz de Variantes por Orientación (Contrato de Consumo)
 
-### Gallery
+> El Engine determina el perfil de procesamiento según orientación del original.
+> El cliente consume las variantes que el Engine produce según esta matriz.
+> **El cliente no decide qué variantes pedir — el Engine decide qué producir.**
 
-Use:
-- `grid_url`
+### 5.1 Imágenes
 
-Fallback:
-- `thumb_url`
+| Orientación | Perfil | thumb (320×320) | feed | full | 
+|-------------|--------|-----------------|------|------|
+| **Portrait** (alta > ancho) | `portrait_standard` | ✅ 320×320 | ✅ **1080×1350** | ✅ 1440_long |
+| **Landscape** (ancho > alta) | `landscape_standard` | ✅ 320×320 | ✅ **1080×608** | ✅ 1920×1080 |
+| **Square** (igual) | `square_standard` | ✅ 320×320 | ✅ **1080×1080** | ✅ 1440×1440 |
 
-Never:
-- original raw
+### 5.2 Videos
 
-### Feed Image
+| Contexto | Perfil | short (1080×1920) | video_preview (720×1280) |
+|----------|--------|-------------------|--------------------------|
+| Short (desma, que_pex) | `short_vertical` | ✅ Video MP4 H.264 AAC | ✅ Thumbnail imagen |
+| Post normal portrait | `portrait_standard` | ✅ Video MP4 H.264 AAC | — |
+| Post normal landscape | `landscape_standard` | — | — |
+| Post normal square | `square_standard` | — | — |
 
-Use:
-- `feed_url`
+### 5.3 Mapeo a Ready Payload (ready_payload)
 
-### Video
+| Campo en payload | Variante Engine | Uso del cliente |
+|-----------------|----------------|-----------------|
+| `thumb_url` | thumb (320×320) | Gallery fallback, preview, skeleton |
+| `grid_url` | grid (600×600) | Gallery principal |
+| `feed_url` | feed (según orientación) | **Card principal del feed** |
+| `full_url` | full (según orientación) | Lightbox, detalle, fullscreen |
+| `video_url` | short (1080×1920) | **Reproducción de video** |
+| `video_preview_url` | video_preview (720×1280) | Poster/thumbnail de video |
 
-Use:
-- preview: `video_preview_url`
-- playback: `video_url`
+### 5.4 Reglas de Renderizado por Componente
 
-### Fullscreen
+#### Card Feed (vista principal)
 
-Use:
-- image: `full_url`
-- video: `video_url`
+| Elemento | Usar | Fuente |
+|----------|------|--------|
+| Imagen principal | `feed_url` | ready_payload |
+| Placeholder carga | `thumb_url` | ready_payload |
+| Galería múltiple | `grid_url` (fallback: `thumb_url`) | ready_payload |
+| Badge/watermark | Según `is_demo_content` y `origin_type` | ready_payload |
+
+#### Video / Shorts (El Desma)
+
+| Elemento | Usar | Fuente |
+|----------|------|--------|
+| Poster del video | `video_preview_url` | ready_payload |
+| Reproducción | `video_url` | ready_payload |
+| Placeholder carga | `thumb_url` | ready_payload |
+
+#### Fullscreen / Detalle
+
+| Elemento | Usar | Fuente |
+|----------|------|--------|
+| Imagen | `full_url` | ready_payload |
+| Video | `video_url` | ready_payload |
+
+### 5.5 Prohibiciones
+
+- ❌ El cliente **NUNCA** usa `original_url` directamente (raw original sin procesar)
+- ❌ El cliente **NUNCA** guarda paths locales como media final
+- ❌ El cliente **NUNCA** decide dimensiones — el Engine las determina por perfil
+- ❌ El cliente **NUNCA** ignora `ready_payload` — solo consume cuando status='ready'
+- ❌ El cliente **NUNCA** pregunta por variantes específicas — consume el payload completo
 
 ## 6. UI Labels
 

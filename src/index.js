@@ -59,17 +59,49 @@ serviceRegistry.registerService('generic', {
 
 const app = express();
 
+// ─── CORS restringido ──────────────────────────────────────────────────────
+// El Media Engine solo acepta peticiones server-to-server. No debe ser
+// consumido directamente desde navegadores. Solo orígenes conocidos.
+
+const ALLOWED_ORIGINS = [
+  'https://api.antojadosmx.mx',
+  'http://localhost:8010',   // Antojados API (dev)
+  'http://localhost:4101',   // Explorer API (dev)
+  'http://localhost:4100',   // self (dev)
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin) return next(); // Petición server-to-server (sin Origin header)
+
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Vary', 'Origin');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    return next();
+  }
+
+  // Origen no permitido: responder con error
+  console.warn(`[CORS] Origen bloqueado: ${origin}`);
+  res.status(403).json({ error: 'origin_not_allowed', message: 'El Media Engine solo acepta peticiones server-to-server.' });
+});
+
 // ─── Middleware ─────────────────────────────────────────────────────────────
 
 app.use(express.json({ limit: config.jsonLimit }));
 
-// Servir archivos de media estáticos (variantes procesadas)
+// NOTA: Los archivos de media estáticos (variantes procesadas) NO se sirven
+// desde Express. En producción, Nginx (o un CDN) debe servir el directorio
+// directamente (ver docs/NginxConfig.md). El Engine solo genera las URLs,
+// no sirve los archivos. El directorio se crea para que el worker escriba.
+//
+// Directorio media: {config.uploadsDir}/media/
+// URL pública:     {config.mediaBaseUrl}/media/{datePath}/{id}/{variant}.{ext}
+
 const mediaStaticDir = path.join(config.uploadsDir, 'media');
 if (!fs.existsSync(mediaStaticDir)) fs.mkdirSync(mediaStaticDir, { recursive: true });
-app.use('/media', express.static(mediaStaticDir, {
-  maxAge: '365d',
-  immutable: true,
-}));
 
 // ─── Health Check ──────────────────────────────────────────────────────────
 

@@ -64,6 +64,10 @@ BEGIN TRY
     BEGIN
         INSERT INTO me.processing_profile (processing_profile_code, profile_version, display_name, rules_json) VALUES
         (N'standard', 1, N'Standard', N'{"image":{"thumb":"320x320","grid":"600x600","feed":"1080x1350","full":"1440_long"},"video":{"short":"1080x1920","fpsMax":30,"codec":"h264","audio":"aac"}}'),
+        (N'portrait_standard', 1, N'Portrait Standard', N'{"image":{"thumb":"320x320","feed":"1080x1350","full":"1440_long"},"video":{"short":"1080x1920","fpsMax":30}}'),
+        (N'landscape_standard', 1, N'Landscape Standard', N'{"image":{"thumb":"320x320","feed":"1080x608","full":"1920x1080"}}'),
+        (N'square_standard', 1, N'Square Standard', N'{"image":{"thumb":"320x320","feed":"1080x1080","full":"1440x1440"}}'),
+        (N'short_vertical', 1, N'Short Vertical', N'{"video":{"short":"1080x1920","fpsMax":30,"codec":"h264","audio":"aac"},"image":{"video_preview":"720x1280"}}'),
         (N'explorer_high', 1, N'Explorer High', N'{"image":{"quality":88},"video":{"bitrate":"4500k","fpsMax":30},"watermark":"policy_based"}'),
         (N'mobile_fast', 1, N'Mobile Fast', N'{"image":{"quality":78},"video":{"bitrate":"2500k","fpsMax":30}}');
     END;

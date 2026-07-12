@@ -2,6 +2,13 @@
 ATLX MEDIA ENGINE V3 - 03 CORE TABLES
 Run against ATLX_MediaEngine
 Idempotent / No GO
+
+ACTUALIZACIÓN v3.1: Agregadas columnas de cruce transversal
+  - media_request:   +channel, post_id, sponsor_id, user_id
+  - media_variant:   +channel, post_id, sponsor_id, user_id
+Estas columnas son metadata de cruce para que los clientes (AntojadosMX, Explorer)
+puedan asociar la media procesada con sus posts/canales. El Engine las almacena
+pero no las interpreta.
 */
 
 USE ATLX_MediaEngine;
@@ -34,6 +41,11 @@ BEGIN TRY
             payload_version INT NOT NULL CONSTRAINT df_me_request_payload_version DEFAULT 3,
             error_code NVARCHAR(80) NULL,
             error_message NVARCHAR(2000) NULL,
+            -- Metadata de cruce transversal (para consulta de clientes)
+            channel NVARCHAR(40) NULL,
+            post_id NVARCHAR(80) NULL,
+            sponsor_id NVARCHAR(80) NULL,
+            user_id NVARCHAR(80) NULL,
             created_at DATETIME2(3) NOT NULL CONSTRAINT df_me_request_created DEFAULT SYSUTCDATETIME(),
             updated_at DATETIME2(3) NOT NULL CONSTRAINT df_me_request_updated DEFAULT SYSUTCDATETIME(),
             uploaded_at DATETIME2(3) NULL,
@@ -137,6 +149,11 @@ BEGIN TRY
             processing_profile_code NVARCHAR(60) NOT NULL CONSTRAINT df_me_variant_profile DEFAULT N'standard',
             profile_version INT NOT NULL CONSTRAINT df_me_variant_profile_version DEFAULT 1,
             payload_version INT NOT NULL CONSTRAINT df_me_variant_payload_version DEFAULT 3,
+            -- Metadata de cruce transversal (copia desde media_request para consulta directa)
+            channel NVARCHAR(40) NULL,
+            post_id NVARCHAR(80) NULL,
+            sponsor_id NVARCHAR(80) NULL,
+            user_id NVARCHAR(80) NULL,
             created_at DATETIME2(3) NOT NULL CONSTRAINT df_me_variant_created DEFAULT SYSUTCDATETIME(),
             updated_at DATETIME2(3) NOT NULL CONSTRAINT df_me_variant_updated DEFAULT SYSUTCDATETIME(),
             CONSTRAINT fk_me_variant_request FOREIGN KEY (media_id) REFERENCES me.media_request(media_id),
@@ -181,6 +198,13 @@ BEGIN TRY
             created_at DATETIME2(3) NOT NULL CONSTRAINT df_me_event_created DEFAULT SYSUTCDATETIME()
         );
     END;
+
+    -- ═════════════════════════════════════════════════════════════════════════
+    -- TABLAS DE CATÁLOGO → Ver 02_CATALOGS.sql y 05_SEED.sql
+    -- Las tablas media_variant_catalog, processing_profile, watermark_profile,
+    -- media_error_catalog y media_status_catalog se definen en 02_CATALOGS.sql
+    -- con su seed data en 05_SEED.sql.
+    -- ═════════════════════════════════════════════════════════════════════════
 
     COMMIT TRANSACTION;
 END TRY

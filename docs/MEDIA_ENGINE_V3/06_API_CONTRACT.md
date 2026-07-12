@@ -1,59 +1,111 @@
 # 06 - API CONTRACT
 
+> Actualizado v3.1: Endpoints versionados (/api/media/v1), matriz de variantes por orientación,
+> validación de sourceApp, CORS restringido.
+
 ## 1. Principle
 
 The API is a thin contract layer over stored procedures. It must not create hidden business rules that conflict with SQL contracts.
 
-## 2. Endpoints
+## 2. Versioning
 
-### POST /api/media/requests
+El Engine expone dos versiones de la API:
 
-Creates media request.
+| Versión | Ruta | sourceApp validation | Estado |
+|---------|------|---------------------|--------|
+| **v1** | `/api/media/v1/*` | ✅ Valida contra serviceRegistry | ✅ ACTUAL |
+| **legacy** | `/api/media/*` | ❌ Sin validación | 🗑️ DEPRECATED (mantenido por compatibilidad) |
 
-### POST /api/media/{mediaId}/rights-origin
+Los clientes NUEVOS deben usar **v1**. Los clientes legacy recibirán `_legacy: true` y `_migrate` en la respuesta.
 
-Registers rights and origin.
+## 3. Endpoints
 
-### POST /api/media/{mediaId}/original
+### POST /api/media/v1/requests
 
-Registers original media.
+Crea media request. Valida sourceApp contra serviceRegistry.
 
-### GET /api/media/{mediaId}
+**Body:**
+```json
+{
+  "sourceApp": "antojados",
+  "sourceActorType": "user",
+  "sourceActorId": "usr_abc",
+  "targetContext": "post",
+  "mediaType": "image",
+  "clientReferenceId": "uuid_para_idempotencia",
+  "processingProfileCode": "standard",
+  "channel": "vas_ir",
+  "postId": "post_xyz",
+  "sponsorId": null,
+  "userId": "usr_abc"
+}
+```
 
-Diagnostics.
+**Campos de cruce transversal:**
+- `channel` — Canal AntojadosMX (vas_ir, arre, barrio, pachanga, que_pex, desma)
+- `postId` — ID del post asociado (para cruce con tablas antojados_core)
+- `sponsorId` — ID del sponsor (si aplica)
+- `userId` — ID del usuario (si aplica)
 
-### GET /api/media/{mediaId}/ready-payload
+**Processing profile se determina automáticamente** según orientación detectada:
+| Orientación | Perfil |
+|-------------|--------|
+| portrait | `portrait_standard` |
+| landscape | `landscape_standard` |
+| square | `square_standard` |
+| video short | `short_vertical` |
 
-Returns public ready payload.
+### POST /api/media/v1/{mediaId}/rights-origin
 
-### GET /api/media/{mediaId}/policy
+Registra derechos y origen de la media.
 
-Returns rights policy evaluation.
+### POST /api/media/v1/{mediaId}/original
 
-### POST /api/media/{mediaId}/cancel
+Registra archivo original (multipart). Campo: `file`.
 
-Cancels pending media.
+### GET /api/media/v1/{mediaId}
 
-### Worker-only
+Diagnóstico completo de la media.
 
-- POST /api/media/worker/jobs/next
-- POST /api/media/worker/jobs/{jobId}/variant
-- POST /api/media/worker/jobs/{jobId}/ready
-- POST /api/media/worker/jobs/{jobId}/failed
-- POST /api/media/worker/jobs/{jobId}/rejected
+### GET /api/media/v1/{mediaId}/ready-payload
 
-## 3. Security Roles
+**Único endpoint de consumo.** El cliente NUNCA pregunta por variantes específicas.
 
-- `media.client`
-- `media.explorer`
-- `media.worker`
-- `media.admin`
+### GET /api/media/v1/{mediaId}/policy
 
-Only worker/admin can mark media ready.
+Evalúa política de derechos.
 
-## 4. Idempotency
+### POST /api/media/v1/{mediaId}/cancel
 
-Use `clientReferenceId`. Same source app + same client reference must return same media id.
+Cancela media pendiente.
+
+## 4. Contrato de Ready Payload
+
+El Engine determina las variantes a producir según orientación. El cliente consume el payload completo.
+
+### Imágenes
+
+| Campo | Variante | Dimensión | Uso del cliente |
+|-------|----------|-----------|-----------------|
+| `thumbUrl` | thumb | 320×320 | Placeholder, skeleton |
+| `gridUrl` | grid | 600×600 | Galería |
+| `feedUrl` | **feed** | Según orientación | **Card principal** |
+| `fullUrl` | full | Según orientación | Lightbox, detalle |
+
+Dimensiones de `feedUrl` y `fullUrl` según orientación:
+
+| Orientación | feedUrl | fullUrl |
+|-------------|---------|---------|
+| portrait | 1080×1350 | 1440_long |
+| landscape | 1080×608 | 1920×1080 |
+| square | 1080×1080 | 1440×1440 |
+
+### Videos
+
+| Campo | Variante | Dimensión | Uso del cliente |
+|-------|----------|-----------|-----------------|
+| `videoUrl` | short | 1080×1920 | Reproducción |
+| `videoPreviewUrl` | video_preview | 720×1280 | Poster/thumbnail |
 
 ## 5. Response When Not Ready
 
@@ -74,16 +126,38 @@ Use `clientReferenceId`. Same source app + same client reference must return sam
   "status": "ready",
   "ready": true,
   "payload": {
-    "thumbUrl": "...",
-    "gridUrl": "...",
-    "feedUrl": "...",
-    "fullUrl": "...",
-    "coverUrl": "...",
-    "videoUrl": "...",
-    "videoPreviewUrl": "...",
+    "thumbUrl": "https://.../thumb_320.webp",
+    "gridUrl": "https://.../grid_600.webp",
+    "feedUrl": "https://.../feed_1080x1350.webp",
+    "fullUrl": "https://.../full_1440.webp",
+    "videoUrl": "https://.../short_1080x1920.mp4",
+    "videoPreviewUrl": "https://.../video_preview_720x1280.webp",
     "originType": "official_antojados",
     "rightsStatus": "approved",
-    "isDemoContent": false
+    "isDemoContent": false,
+    "channel": "vas_ir",
+    "postId": "post_xyz",
+    "sponsorId": null,
+    "userId": "usr_abc"
   }
 }
 ```
+
+## 7. Security
+
+- CORS restringido: solo `api.antojadosmx.mx`, `localhost:8010`, `localhost:4101`, `localhost:4100`
+- sourceApp debe estar registrado en serviceRegistry (en rutas v1)
+- Solo worker/admin pueden marcar media como ready
+
+## 8. Idempotency
+
+Use `clientReferenceId`. Mismo sourceApp + mismo clientReferenceId retorna mismo mediaId.
+No se crean duplicados.
+
+## 9. Reglas de Consumo para Clientes
+
+1. ✅ El cliente sube media → poll status → consume ready_payload
+2. ✅ El cliente **NUNCA** decide qué variantes pedir
+3. ✅ El cliente **NUNCA** usa `original_url` directamente
+4. ✅ El cliente **NUNCA** ignora `ready_payload` (solo consumir cuando status='ready')
+5. ✅ El cliente **NUNCA** guarda paths locales como media final
