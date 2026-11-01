@@ -54,6 +54,12 @@ archivo de `media-engine/src` la lee, y su SQL vive deprecado en
 | 22 | `22_CAPACITY_HONEST_GUARD.sql` | Guarda honesta, carril de audio en la cola, retiro de residuos | 16, 17, 18 |
 | 23 | `23_READY_PAYLOAD_METADATA_AUDIO.sql` | **Definición FINAL** de `v_media_ready_payload` (superset de 06/12/17 + `avatar`, `story`, `audio`) y de `sp_media_get_ready_payload` | 12, 13, 17 |
 | 24 | `24_QUEUE_INTEGRITY.sql` | `ux_me_job_active_media` (un pipeline activo por media), dedupe en `sp_media_original_register`, guarda de media terminal en `sp_media_job_pick_next`, `sp_media_job_purge_terminated` | 07, 09, 22 |
+| 25 | `25_TRANSVERSAL_METADATA_COLUMNS.sql` | Crea/ensancha `channel` (40), `post_id`/`sponsor_id`/`user_id` (80) en `media_request` y `media_rights_origin` | 23 |
+
+**Instalación limpia:** la 25 debe aplicarse **antes de la 12**, porque la 12 crea
+la vista que ya referencia `r.channel` y la tabla no lo tenía: hasta el 2026-11-01
+esas cuatro columnas las creaba un DDL del repositorio del cliente. La 25 es
+idempotente, así que en una base ya instalada basta con aplicarla al final.
 
 ### Dependencia que rompe la reinstalación — 06 → 12 → 17 → 23
 

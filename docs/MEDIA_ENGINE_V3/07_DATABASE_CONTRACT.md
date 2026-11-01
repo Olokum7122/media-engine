@@ -26,9 +26,25 @@
 
 ### 2.1 Columnas de Cruce Transversal
 
-Las columnas `channel`, `post_id`, `sponsor_id`, `user_id` en `media_request` y `media_variant`
-son **metadata de cruce** para que los clientes (AntojadosMX, Explorer, etc.) puedan asociar
-la media procesada con sus propios posts/canales. El Engine las almacena pero NO las interpreta.
+Las columnas `channel`, `post_id`, `sponsor_id`, `user_id` viven en `media_request`
+y en `media_rights_origin`, y son **metadata de cruce** para que los clientes
+(AntojadosMX, Explorer, Colaborattor, etc.) puedan asociar la media procesada con
+sus propios posts/canales. El Engine las almacena pero NO las interpreta.
+
+| Columna | Tipo efectivo | Uso |
+|---|---|---|
+| `channel` | `NVARCHAR(40)` | Canal destino (`feed`, `desma`, `que_pex`, `editorial`) |
+| `post_id` | `NVARCHAR(80)` | Identificador del post en la app de origen |
+| `sponsor_id` | `NVARCHAR(80)` | Patrocinador, cuando aplica |
+| `user_id` | `NVARCHAR(80)` | Usuario de la app de origen |
+
+Los tamaños los fija el motor en `25_TRANSVERSAL_METADATA_COLUMNS.sql`, que es la
+autoridad. Durante meses estuvieron en `NVARCHAR(30)`/`NVARCHAR(64)` porque las
+creó un DDL que vivía en el repositorio del cliente (`Antojados/scripts`), más
+estrecho que los parámetros del propio motor: un `post_id` de más de 64
+caracteres hacía fallar el registro con "String or binary data would be
+truncated". Ese DDL se retiró el 2026-11-01; el esquema `me.*` sólo se altera
+desde este repositorio.
 
 **Regla:** Un cliente que envía `sourceApp='antojados'` debe incluir `post_id` y `channel`.
 El Engine no valida estos campos — solo los almacena para devolverlos en el ready-payload.

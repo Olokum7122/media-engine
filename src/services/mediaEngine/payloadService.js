@@ -93,18 +93,4 @@ async function getReadyPayload(mediaId) {
   };
 }
 
-/**
- * Obtiene el payload desde la vista v_media_ready_payload (lectura directa).
- *
- * @param {string} mediaId
- */
-async function getReadyPayloadFromView(mediaId) {
-  const pool = await getPool();
-  const result = await pool.request()
-    .input('mediaId', sql.UniqueIdentifier, mediaId)
-    .query('SELECT * FROM me.v_media_ready_payload WHERE media_id = @mediaId');
-
-  return result.recordset[0] || null;
-}
-
-module.exports = { getReadyPayload, getReadyPayloadFromView };
+module.exports = { getReadyPayload };
