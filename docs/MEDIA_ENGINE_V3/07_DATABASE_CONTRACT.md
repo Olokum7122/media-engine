@@ -87,19 +87,44 @@ El Engine no valida estos campos — solo los almacena para devolverlos en el re
 
 | SP | Función |
 |----|---------|
-| `me.sp_media_job_pick_next` | Obtener siguiente trabajo pendiente (round-robin) |
+| `me.sp_media_job_pick_next` | Reservar el siguiente trabajo elegible. **Firma ampliada en la 22**: `@worker_id, @job_type=NULL, @media_type=NULL, @exclude_media_type=NULL`. `UPDLOCK, READPAST` sobre `ix_me_job_queue` y respeta `next_attempt_at`. Los filtros de tipo permiten el carril rápido de audio sobre la MISMA cola. |
 | `me.sp_media_job_mark_running` | Marcar trabajo como en ejecución |
+| `me.sp_media_job_heartbeat` | Renovar el lease del job (migración 19) para que el reaper no reclame un transcode vivo |
+| `me.sp_media_job_reap_stale` | Devolver a la cola los jobs con lease vencido (migración 18) |
+| `me.sp_media_job_retry_or_fail` | Decidir entre reintento aplazado (`next_attempt_at`) y `dead_letter` (migración 18) |
+| `me.sp_media_queue_stats` | Foto de la cola por estado (migración 18; la consume `v_media_queue_health`) |
 | `me.sp_media_variant_upsert` | Insertar o actualizar variante procesada |
 | `me.sp_media_mark_ready` | Marcar media como lista (completada) |
 | `me.sp_media_mark_failed` | Marcar media como fallida |
 | `me.sp_media_mark_rejected` | Marcar media como rechazada |
 
+### 4.3 Guarda de actor
+
+| SP | Origen | Función |
+|----|--------|---------|
+| `me.sp_media_actor_busy` | 16, reescrito en **22** | Dice si el actor tiene trabajo real en curso. Devuelve `busy, active_count, media_id, media_type, status, target_context, elapsed_seconds, identity_missing, busy_reason` (`processing` \| `upload_in_flight` \| `awaiting_processing`). |
+
+Reglas que la 22 fijó, y que no deben revertirse:
+
+1. **Sólo bloquea trabajo con job vivo** (`pending`/`running`). Un `processing`
+   sin job es un residuo del reaper, no trabajo en curso.
+2. **No contiene a un actor sin identidad.** Un marcador compartido (`unknown`,
+   `anon`, vacío) devuelve `busy = 0` con `identity_missing = 1`. Contener por
+   ese marcador cierra la puerta a todos los usuarios que lo comparten, que es
+   exactamente lo que ocurrió el 2026-11-01.
+3. **El motivo se nombra.** Una subida en vuelo, una espera de cola y un
+   procesamiento en curso son estados distintos y el cliente los comunica
+   distinto.
+
+
 ## 5. Public Views
 
 | Vista | Función |
 |-------|---------|
-| `me.v_media_ready_payload` | JOIN de request + rights + original + variant. Devuelve URLs organizadas por variant_code. Solo útil si status = 'ready' |
+| `me.v_media_ready_payload` | JOIN de request + rights + original + variant. Devuelve URLs organizadas por variant_code. Solo útil si status = 'ready'. **Definición final en `23_READY_PAYLOAD_METADATA_AUDIO.sql`** (36 columnas): superset de 06, 12 y 17, más `avatar_url`, `story_url`, `audio_url` y `audio_preview_url`. Cualquier migración futura debe partir de 23, no de 06/12/17. |
 | `me.v_media_request_summary` | Resumen con source_app, status, conteo de variantes y jobs |
+| `me.v_media_queue_health` | Salud de la cola por estado (migración 18) |
+| `me.v_media_actor_inflight` | Peticiones en vuelo por actor, con `job_alive` y `identity_missing`, para diagnosticar qué bloquea a quién (migración 18) |
 
 ## 6. Ready Contract
 

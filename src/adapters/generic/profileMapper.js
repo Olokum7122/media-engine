@@ -9,7 +9,7 @@
  *               o que no tienen adaptador específico
  *
  * NO HACE:
- *   - No conoce canales de Antojados ni Explorer
+ *   - No conoce canales específicos de servicios cliente
  *   - No aplica reglas de negocio específicas de ningún servicio
  *   - Solo devuelve 'standard' (compatibilidad universal)
  *

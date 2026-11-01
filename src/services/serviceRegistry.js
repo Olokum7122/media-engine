@@ -6,7 +6,7 @@
  * ══════════════════════════════════════════════════════════════════════════════
  * DOMINIO:      ATLX Media Engine — Multi-servicio
  * RESPONSABLE:  Registrar y resolver adaptadores específicos por servicio (sourceApp)
- *               Cada servicio (antojados, explorer, etc.) se registra con su
+ *               Cada servicio (antojados, generic, etc.) se registra con su
  *               propio conjunto de adaptadores.
  *
  * NO HACE:
@@ -25,7 +25,6 @@
  *
  *   Servicios built-in:
  *     - antojados (AntojadosMX — App Social + Negocios)
- *     - explorer (Explorer App — Descubrimiento de lugares)
  *     - generic  (Fallback para servicios no registrados)
  *
  * FLUJO:

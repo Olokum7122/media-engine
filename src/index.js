@@ -9,12 +9,11 @@
  *
  * NO HACE:
  *   - No conoce de posts, sponsors ni usuarios (dominio de cada servicio)
- *   - No tiene lógica de negocio específica de Antojados o Explorer
+ *   - No tiene lógica de negocio específica de Antojados
  *   - No decide políticas de derechos (lo hace policyEvaluator)
  *
  * SERVICIOS REGISTRADOS:
  *   - antojados  → AntojadosMX (App Social + Negocios)
- *   - explorer   → Explorer App (Descubrimiento de lugares)
  *   - generic    → Fallback para servicios no registrados
  *
  * ENTRY POINTS:
@@ -44,16 +43,19 @@ serviceRegistry.registerService('antojados', {
   mediaPackageMapper: antojadosPackageMapper,
 });
 
-// Servicio: Explorer App
-serviceRegistry.registerService('explorer', {
-  // Explorer usa perfiles standard por ahora
-  channelProfileMapper: antojadosChannelProfileMapper, // comparte el perfil de Antojados
-  mediaPackageMapper: antojadosPackageMapper,
-});
-
 // Servicio: Generic (fallback)
 const genericProfileMapper = require('./adapters/generic/profileMapper');
 serviceRegistry.registerService('generic', {
+  channelProfileMapper: genericProfileMapper,
+});
+
+// Servicios ATLX Editorial
+// Usan perfil genérico: el Engine conserva metadata transversal, no interpreta
+// reglas editoriales ni de Colaborattor.
+serviceRegistry.registerService('editorial', {
+  channelProfileMapper: genericProfileMapper,
+});
+serviceRegistry.registerService('colaborattor', {
   channelProfileMapper: genericProfileMapper,
 });
 
@@ -66,7 +68,6 @@ const app = express();
 const ALLOWED_ORIGINS = [
   'https://api.antojadosmx.mx',
   'http://localhost:8010',   // Antojados API (dev)
-  'http://localhost:4101',   // Explorer API (dev)
   'http://localhost:4100',   // self (dev)
 ];
 
@@ -92,16 +93,26 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: config.jsonLimit }));
 
-// NOTA: Los archivos de media estáticos (variantes procesadas) NO se sirven
-// desde Express. En producción, Nginx (o un CDN) debe servir el directorio
-// directamente (ver docs/NginxConfig.md). El Engine solo genera las URLs,
-// no sirve los archivos. El directorio se crea para que el worker escriba.
+// ─── Archivos de media estáticos ───────────────────────────────────────────
+//
+// MEASURED 2026-10-31: Nginx NO sirve este directorio. La config activa de
+// api.antojadosmx.mx tiene `location /media { proxy_pass http://127.0.0.1:4100; }`,
+// así que el Engine es el único origen de las variantes ya procesadas. Quitar
+// este estático (como hacía una versión anterior de este archivo) deja en 404
+// todas las URLs públicas de media.
 //
 // Directorio media: {config.uploadsDir}/media/
 // URL pública:     {config.mediaBaseUrl}/media/{datePath}/{id}/{variant}.{ext}
 
 const mediaStaticDir = path.join(config.uploadsDir, 'media');
 if (!fs.existsSync(mediaStaticDir)) fs.mkdirSync(mediaStaticDir, { recursive: true });
+
+app.use('/media', express.static(mediaStaticDir, {
+  // El path incluye fecha y media_id, y una variante nunca se reescribe: es
+  // inmutable por construcción, por lo que la caché larga es segura.
+  maxAge: '365d',
+  immutable: true,
+}));
 
 // ─── Health Check ──────────────────────────────────────────────────────────
 

@@ -33,8 +33,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'me.media_
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'me.media_variant') AND name = N'ux_me_variant_media_code')
     CREATE UNIQUE INDEX ux_me_variant_media_code ON me.media_variant(media_id, variant_code);
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'me.processing_job') AND name = N'ix_me_job_next')
-    CREATE INDEX ix_me_job_next ON me.processing_job(status, priority, created_at) INCLUDE (media_id, attempts, max_attempts);
+-- Índice ÚNICO de cola. Sostiene `me.sp_media_job_pick_next`: filtra por estado
+-- (y por tipo de media, vía EXISTS sobre la petición), ordena por prioridad y
+-- antigüedad, y incluye `next_attempt_at` para respetar el aplazamiento del
+-- reintento sin tocar la tabla.
+--
+-- Sustituye a `ix_me_job_next(status, priority, created_at)`, que servía la
+-- misma consulta y no conocía el aplazamiento: mantener los dos duplicaba el
+-- costo de escritura de cada job sin acelerar ninguna lectura. Se retira en la
+-- migración 22.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'me.processing_job') AND name = N'ix_me_job_queue')
+    CREATE INDEX ix_me_job_queue ON me.processing_job(status, next_attempt_at, priority, created_at)
+        INCLUDE (media_id, job_type, attempts, max_attempts);
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'me.processing_job') AND name = N'ix_me_job_media')
     CREATE INDEX ix_me_job_media ON me.processing_job(media_id, created_at DESC);

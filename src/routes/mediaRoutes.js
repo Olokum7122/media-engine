@@ -35,6 +35,7 @@ const originalService = require('../services/mediaEngine/originalService');
 const payloadService = require('../services/mediaEngine/payloadService');
 const policyEvaluator = require('../services/mediaEngine/policyEvaluator');
 const serviceRegistry = require('../services/serviceRegistry');
+const actorGuardService = require('../services/mediaEngine/actorGuardService');
 
 const router = Router();
 
@@ -67,12 +68,66 @@ function validateSourceApp(sourceApp) {
 function createV1Router() {
   const v1 = Router();
 
+  // GET /api/media/v1/library — Enumerar el material de un actor (biblioteca)
+  // Registrada antes de las rutas con parámetro para que '/library' no sea
+  // capturada como un :mediaId.
+  v1.get('/library', async (req, res) => {
+    try {
+      const sourceActorId = req.query.sourceActorId || req.query.source_actor_id;
+      if (!sourceActorId) {
+        return res.status(400).json({ error: 'Campo requerido: sourceActorId' });
+      }
+
+      const items = await requestService.listByActor({
+        sourceActorId,
+        sourceApp: req.query.sourceApp || req.query.source_app || null,
+        mediaType: req.query.mediaType || req.query.media_type || null,
+        status: req.query.status || null,
+        search: req.query.search || null,
+        limit: req.query.limit ? Number(req.query.limit) : 60,
+        offset: req.query.offset ? Number(req.query.offset) : 0,
+      });
+
+      res.json({ items, count: items.length });
+    } catch (err) {
+      console.error('[GET /api/media/v1/library]', err.message);
+      res.status(500).json({ error: 'Error al listar media del actor', detail: err.message });
+    }
+  });
+
+  // GET /api/media/v1/actor-status — ¿este actor puede abrir otra publicación?
+  // El cliente lo consulta antes de publicar y al abrir el diálogo, para poder
+  // explicar por qué no se le permite en vez de fallar sin mensaje.
+  v1.get('/actor-status', async (req, res) => {
+    try {
+      const sourceActorId = req.query.sourceActorId || req.query.source_actor_id;
+      if (!sourceActorId) {
+        return res.status(400).json({ error: 'Campo requerido: sourceActorId' });
+      }
+
+      const status = await actorGuardService.getActorBusy({
+        sourceActorId,
+        sourceApp: req.query.sourceApp || req.query.source_app || null,
+        excludeClientReferenceId: req.query.clientReferenceId || null,
+      });
+
+      res.json({
+        ...status,
+        allowed: !status.busy,
+        retryAfterSeconds: status.busy ? config.guard.retryAfterSeconds : 0,
+      });
+    } catch (err) {
+      console.error('[GET /api/media/v1/actor-status]', err.message);
+      res.status(500).json({ error: 'Error al consultar el estado del actor', detail: err.message });
+    }
+  });
+
   // POST /api/media/v1/requests — Crear media request
   v1.post('/requests', async (req, res) => {
     try {
       const { sourceApp, sourceActorType, sourceActorId, targetContext,
               mediaType, externalContextId, externalTraceId, clientReferenceId,
-              processingProfileCode, watermarkProfileCode,
+              publishGroupId, processingProfileCode, watermarkProfileCode,
               channel, postId, sponsorId, userId } = req.body;
 
       if (!sourceApp || !sourceActorType || !sourceActorId || !targetContext || !mediaType) {
@@ -86,6 +141,23 @@ function createV1Router() {
           error: `sourceApp "${sourceApp}" no está registrado en serviceRegistry`,
           detail: 'Servicios válidos: ' + serviceRegistry.listServices().map(s => s.sourceApp).join(', '),
         });
+      }
+
+      // Guarda de concurrencia: una publicación en vuelo por actor. Se aplica
+      // antes de crear, para no encolar trabajo que va a esperar detrás de otro
+      // transcode del mismo usuario. El clientReferenceId propio se excluye para
+      // que un reintento de la MISMA publicación sí pase (idempotencia del SP).
+      if (config.guard.enabled) {
+        const busy = await actorGuardService.getActorBusy({
+          sourceActorId,
+          sourceApp,
+          excludeClientReferenceId: clientReferenceId || null,
+          excludeClientReferencePrefix: publishGroupId ? `${publishGroupId}_` : null,
+        });
+        if (busy.busy) {
+          res.set('Retry-After', String(config.guard.retryAfterSeconds));
+          return res.status(409).json(actorGuardService.buildBusyResponse(busy));
+        }
       }
 
       const result = await requestService.createRequest({
@@ -242,18 +314,83 @@ router.use('/api/media/v1', createV1Router());
 // Las rutas legacy se mantienen sin validación de sourceApp para no romper clientes
 // que aún no envían el campo. En futura versión se eliminarán.
 
+// GET /api/media/library — Bibliotecas del actor (espejo legacy de /v1/library)
+router.get('/api/media/library', async (req, res) => {
+  try {
+    const sourceActorId = req.query.sourceActorId || req.query.source_actor_id;
+    if (!sourceActorId) {
+      return res.status(400).json({ error: 'Campo requerido: sourceActorId' });
+    }
+
+    const items = await requestService.listByActor({
+      sourceActorId,
+      sourceApp: req.query.sourceApp || req.query.source_app || null,
+      mediaType: req.query.mediaType || req.query.media_type || null,
+      status: req.query.status || null,
+      search: req.query.search || null,
+      limit: req.query.limit ? Number(req.query.limit) : 60,
+      offset: req.query.offset ? Number(req.query.offset) : 0,
+    });
+
+    res.json({ items, count: items.length, _legacy: true, _migrate: '/api/media/v1/library' });
+  } catch (err) {
+    console.error('[GET /api/media/library]', err.message);
+    res.status(500).json({ error: 'Error al listar media del actor', detail: err.message });
+  }
+});
+
+// GET /api/media/actor-status — espejo legacy de /v1/actor-status
+router.get('/api/media/actor-status', async (req, res) => {
+  try {
+    const sourceActorId = req.query.sourceActorId || req.query.source_actor_id;
+    if (!sourceActorId) {
+      return res.status(400).json({ error: 'Campo requerido: sourceActorId' });
+    }
+
+    const status = await actorGuardService.getActorBusy({
+      sourceActorId,
+      sourceApp: req.query.sourceApp || req.query.source_app || null,
+      excludeClientReferenceId: req.query.clientReferenceId || null,
+    });
+
+    res.json({
+      ...status,
+      allowed: !status.busy,
+      retryAfterSeconds: status.busy ? config.guard.retryAfterSeconds : 0,
+      _legacy: true,
+      _migrate: '/api/media/v1/actor-status',
+    });
+  } catch (err) {
+    console.error('[GET /api/media/actor-status]', err.message);
+    res.status(500).json({ error: 'Error al consultar el estado del actor', detail: err.message });
+  }
+});
+
 // POST /api/media/requests
 router.post('/api/media/requests', async (req, res) => {
   try {
     const { sourceApp, sourceActorType, sourceActorId, targetContext,
             mediaType, externalContextId, externalTraceId, clientReferenceId,
-            processingProfileCode, watermarkProfileCode,
+            publishGroupId, processingProfileCode, watermarkProfileCode,
             channel, postId, sponsorId, userId } = req.body;
 
     if (!sourceApp || !sourceActorType || !sourceActorId || !targetContext || !mediaType) {
       return res.status(400).json({
         error: 'Campos requeridos: sourceApp, sourceActorType, sourceActorId, targetContext, mediaType',
       });
+    }
+
+    if (config.guard.enabled) {
+      const busy = await actorGuardService.getActorBusy({
+        sourceActorId,
+        sourceApp,
+        excludeClientReferenceId: clientReferenceId || null,
+        excludeClientReferencePrefix: publishGroupId ? `${publishGroupId}_` : null,
+      });
+      if (busy.busy) {
+        res.set('Retry-After', String(config.guard.retryAfterSeconds));
+        return res.status(409).json({ ...actorGuardService.buildBusyResponse(busy), _legacy: true });
+      }
     }
 
     const result = await requestService.createRequest({
@@ -394,6 +531,17 @@ function _getDatePath() {
   return `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+/**
+ * Extensión de respaldo cuando el archivo llega sin nombre útil. Sólo se usa si
+ * `originalname` no trae una: el motor no adivina el formato, lo deduce del
+ * MIME declarado y, si no lo conoce, deja `bin` para que `ffprobe` decida.
+ *
+ * El audio se admite aquí porque es un tipo de primera clase del motor
+ * (`13_AUDIO_MEDIA_TYPE.sql`, `mediaProcessorV3.processAudio`): Colaborattor
+ * graba entrevistas y las almacena para transcribir, y un `.m4a` de Android
+ * puede llegar sin extensión en el nombre. Sin este mapeo el original quedaba
+ * guardado como `.bin` y el reproductor no podía servirlo.
+ */
 function _detectExt(mimeType) {
   const map = {
     'image/jpeg': 'jpg',
@@ -402,6 +550,21 @@ function _detectExt(mimeType) {
     'image/gif': 'gif',
     'video/mp4': 'mp4',
     'video/quicktime': 'mov',
+    // audio
+    'audio/mp4': 'm4a',
+    'audio/m4a': 'm4a',
+    'audio/x-m4a': 'm4a',
+    'audio/aac': 'aac',
+    'audio/mpeg': 'mp3',
+    'audio/mp3': 'mp3',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/wave': 'wav',
+    'audio/ogg': 'ogg',
+    'audio/opus': 'opus',
+    'audio/webm': 'webm',
+    'audio/amr': 'amr',
+    'audio/x-caf': 'caf',
   };
   return map[mimeType] || 'bin';
 }

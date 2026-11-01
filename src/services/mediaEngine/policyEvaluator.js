@@ -27,18 +27,23 @@ async function evaluate(mediaId) {
       .input('media_id', sql.UniqueIdentifier, mediaId)
       .query(`
         SELECT 
-          origin_type,
-          origin_platform,
-          rights_status,
-          engine_watermark_policy,
-          allow_engine_watermark,
-          is_demo_content,
-          original_watermark_detected,
-          original_author_handle,
-          origin_url,
-          watermark_profile_code
-        FROM me.media_rights_origin
-        WHERE media_id = @media_id
+          ro.origin_type,
+          ro.origin_platform,
+          ro.rights_status,
+          ro.engine_watermark_policy,
+          ro.allow_engine_watermark,
+          ro.is_demo_content,
+          ro.original_watermark_detected,
+          ro.original_author_handle,
+          ro.origin_url,
+          -- watermark_profile_code pertenece a la PETICIÓN, no a la declaración
+          -- de derechos: en me.media_rights_origin esa columna no existe y el
+          -- SELECT completo fallaba, dejando la política sin evaluar.
+          r.watermark_profile_code,
+          r.media_type
+        FROM me.media_rights_origin ro
+        LEFT JOIN me.media_request r ON r.media_id = ro.media_id
+        WHERE ro.media_id = @media_id
       `);
 
     const rights = result.recordset[0];
@@ -69,6 +74,15 @@ async function evaluate(mediaId) {
 
     // ⚠️ Excepción: contenido demo nunca lleva watermark
     if (rights?.is_demo_content) {
+      shouldApplyEngineWatermark = false;
+      watermarkProfileCode = null;
+    }
+
+    // ⚠️ Excepción: el audio no lleva marca de agua. `processAudio` no
+    // transcodifica y no dibuja overlays: publica el original medido. Dejar la
+    // política en `true` haría que el contrato prometiera una marca que ninguna
+    // etapa aplica, y que cualquier consumidor creyera el audio marcado.
+    if (String(rights?.media_type || '').toLowerCase() === 'audio') {
       shouldApplyEngineWatermark = false;
       watermarkProfileCode = null;
     }

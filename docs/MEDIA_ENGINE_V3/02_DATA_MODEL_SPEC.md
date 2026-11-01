@@ -86,12 +86,23 @@ Worker queue.
 
 Important fields:
 - `job_type`
-- `status`
+- `status` — `pending`, `running`, `done`, `failed`, `canceled`, `dead_letter`
 - `priority`
-- `attempts`
-- `locked_by`
+- `attempts` / `max_attempts`
+- `next_attempt_at` — aplazamiento del reintento; NULL = elegible ya. Es lo
+  que impide que un fallo transitorio se reencole en bucle inmediato.
+- `locked_by` / `locked_at` — lease del worker; el reaper lo usa para reclamar
+  jobs de un worker que murió.
 - `error_code`
 - `error_message`
+
+`dead_letter` no es `failed`: `failed` aún puede reintentarse; `dead_letter` ya
+agotó `max_attempts` y se conserva sólo para diagnóstico.
+
+⚠️ `channel`, `post_id`, `sponsor_id` y `user_id` **no** son parte de este
+modelo: se retiraron en la migración 22 (116 109 filas, 100 % NULL, ningún
+objeto del motor las leía). La metadata transversal vive en `me.media_request`,
+que es donde el contrato la declara.
 
 ## 3. Catalog Tables
 

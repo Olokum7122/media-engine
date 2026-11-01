@@ -180,9 +180,16 @@ BEGIN TRY
             error_message NVARCHAR(2000) NULL,
             created_at DATETIME2(3) NOT NULL CONSTRAINT df_me_job_created DEFAULT SYSUTCDATETIME(),
             updated_at DATETIME2(3) NOT NULL CONSTRAINT df_me_job_updated DEFAULT SYSUTCDATETIME(),
+            -- Aplazamiento del reintento (migración 18). Null = elegible ya.
+            -- Es lo que separa «reintentar» de «reintentar en bucle»: un fallo
+            -- transitorio de FFmpeg no debe reencolarse en el mismo milisegundo.
+            next_attempt_at DATETIME2(3) NULL,
             CONSTRAINT fk_me_job_request FOREIGN KEY (media_id) REFERENCES me.media_request(media_id),
             CONSTRAINT ck_me_job_type CHECK (job_type IN (N'normalize', N'thumbnail', N'compress', N'watermark', N'metadata', N'payload', N'full_pipeline')),
-            CONSTRAINT ck_me_job_status CHECK (status IN (N'pending', N'running', N'done', N'failed', N'canceled'))
+            -- `dead_letter` (migración 18): el job agotó sus intentos y se retira
+            -- de la cola sin borrarse, para poder diagnosticarlo. No es `failed`
+            -- —que aún puede reintentarse— ni `canceled` —que lo pidió alguien—.
+            CONSTRAINT ck_me_job_status CHECK (status IN (N'pending', N'running', N'done', N'failed', N'canceled', N'dead_letter'))
         );
     END;
 

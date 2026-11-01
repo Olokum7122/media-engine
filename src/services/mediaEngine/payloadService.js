@@ -57,7 +57,19 @@ async function getReadyPayload(mediaId) {
       storyUrl: row.story_url,
       avatarUrl: row.avatar_url,
       videoUrl: row.video_url,
+      // Escalera de video: el cliente (resolveMediaFromResult / usePostMedia)
+      // pide explícitamente 720 y 1080 para elegir según red y pantalla. El SP
+      // ya las devolvía, pero el mapeo las descartaba y el cliente sólo veía
+      // `videoUrl`.
+      video720Url: row.video_720_url || null,
+      video1080Url: row.video_1080_url || null,
       videoPreviewUrl: row.video_preview_url,
+      // Audio (migración 23). `processAudio` mide con ffprobe y publica
+      // `audio_full` apuntando al original sin recodificar; `audio_preview` está
+      // declarado en catálogo y CHECK pero todavía no tiene productor, así que
+      // llega NULL hasta que exista.
+      audioUrl: row.audio_url || null,
+      audioPreviewUrl: row.audio_preview_url || null,
       durationMs: row.duration_ms,
       width: row.width,
       height: row.height,
@@ -73,6 +85,10 @@ async function getReadyPayload(mediaId) {
       allowShare: row.allow_share,
       payloadVersion: row.payload_version,
       readyAt: row.ready_at,
+      channel: row.channel,
+      postId: row.post_id,
+      sponsorId: row.sponsor_id,
+      userId: row.user_id,
     } : null,
   };
 }

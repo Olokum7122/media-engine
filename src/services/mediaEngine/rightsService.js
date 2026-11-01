@@ -16,7 +16,7 @@ const { getPool, sql } = require('../../db');
  *
  * @param {object} params
  * @param {string} params.mediaId
- * @param {string} params.originType              — official_antojados, explorer_partner, etc.
+ * @param {string} params.originType              — official_antojados, partner, etc.
  * @param {string} [params.originPlatform]        — antojados, tiktok, instagram, facebook, youtube, etc.
  * @param {string} [params.originUrl]
  * @param {string} [params.originalAuthorName]

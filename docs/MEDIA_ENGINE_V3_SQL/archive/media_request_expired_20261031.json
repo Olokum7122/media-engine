@@ -1,0 +1,97 @@
+{
+  "generado": "2026-10-31T16:14:07.646Z",
+  "motivo": "caducidad de peticiones fallidas sin job",
+  "filas": [
+    {
+      "media_id": "F3AF362D-B4F5-4C03-A519-350DFB16E4B1",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "Archivo original no encontrado: /Users/olokum68/Atlx/media-engine/uploads/media/2026/08/F3AF362D-B4F5-4C03-A519-350DFB16E4B1/original.png",
+      "original_storage_path": "/Users/olokum68/Atlx/media-engine/uploads/media/2026/08/F3AF362D-B4F5-4C03-A519-350DFB16E4B1/original.png",
+      "size_bytes": "68",
+      "mime_type": "image/png",
+      "created_at": "2026-08-10 16:46:05",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "BB9A8D4A-F4A2-4BE2-A296-6871A0DA449C",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "Archivo original no encontrado: /Users/olokum68/Atlx/media-engine/uploads/media/2026/08/BB9A8D4A-F4A2-4BE2-A296-6871A0DA449C/original.jpg",
+      "original_storage_path": "/Users/olokum68/Atlx/media-engine/uploads/media/2026/08/BB9A8D4A-F4A2-4BE2-A296-6871A0DA449C/original.jpg",
+      "size_bytes": "315440",
+      "mime_type": "image/jpeg",
+      "created_at": "2026-08-10 16:47:25",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "EC41BC56-FB4C-4BC8-8033-FADD0EE5B88A",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "pngload: IDAT stream error",
+      "original_storage_path": "/opt/media-engine/uploads/media/2026/10/EC41BC56-FB4C-4BC8-8033-FADD0EE5B88A/original.png",
+      "size_bytes": "149",
+      "mime_type": "image/png",
+      "created_at": "2026-10-03 08:28:58",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "FEDF252B-A797-4C79-9B00-D14E43322DEF",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "pngload: libspng read error",
+      "original_storage_path": "/opt/media-engine/uploads/media/2026/10/FEDF252B-A797-4C79-9B00-D14E43322DEF/original.bin",
+      "size_bytes": "73",
+      "mime_type": "image/png",
+      "created_at": "2026-10-10 17:31:37",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "1F47C9DF-FF1D-4866-BDC5-D6E318A642A3",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "pngload: libspng read error",
+      "original_storage_path": "/opt/media-engine/uploads/media/2026/10/1F47C9DF-FF1D-4866-BDC5-D6E318A642A3/original.png",
+      "size_bytes": "98",
+      "mime_type": "image/png",
+      "created_at": "2026-10-10 17:56:05",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "9F83344A-3090-4357-A8E9-D727780DA2E5",
+      "media_type": "image",
+      "status": "failed",
+      "error_code": "PROCESSING_ERROR",
+      "error_message": "pngload: libspng read error",
+      "original_storage_path": "/opt/media-engine/uploads/media/2026/10/9F83344A-3090-4357-A8E9-D727780DA2E5/original.png",
+      "size_bytes": "98",
+      "mime_type": "image/png",
+      "created_at": "2026-10-10 17:56:13",
+      "variantes": 0,
+      "jobs": 0
+    },
+    {
+      "media_id": "5EC451CE-EAFC-4E36-8612-2BE325781155",
+      "media_type": "video",
+      "status": "failed",
+      "error_code": "UNSUPPORTED_MEDIA",
+      "error_message": "ffprobe exited with code 1\nffprobe version N-58069-gc253b180cb-static https://johnvansickle.com/ffmpeg/  Copyright (c) 2007-2021 the FFmpeg ",
+      "original_storage_path": "/opt/media-engine/uploads/media/2026/10/5EC451CE-EAFC-4E36-8612-2BE325781155/original.mp4",
+      "size_bytes": "8000",
+      "mime_type": "video/mp4",
+      "created_at": "2026-10-31 06:34:49",
+      "variantes": 0,
+      "jobs": 0
+    }
+  ]
+}
