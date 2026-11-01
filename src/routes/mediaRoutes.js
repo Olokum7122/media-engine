@@ -109,6 +109,10 @@ function createV1Router() {
         sourceActorId,
         sourceApp: req.query.sourceApp || req.query.source_app || null,
         excludeClientReferenceId: req.query.clientReferenceId || null,
+        // El cliente pregunta por su propio grupo de publicación: si no se excluye
+        // aquí, la petición que ESTE MISMO publish acaba de crear se cuenta como
+        // trabajo ajeno en curso y la app se bloquea a sí misma.
+        excludeClientReferencePrefix: req.query.publishGroupId || null,
       });
 
       res.json({
@@ -351,6 +355,9 @@ router.get('/api/media/actor-status', async (req, res) => {
       sourceActorId,
       sourceApp: req.query.sourceApp || req.query.source_app || null,
       excludeClientReferenceId: req.query.clientReferenceId || null,
+      // Ver la ruta v1: sin esta exclusión el preflight cuenta el propio intake
+      // del publish en curso y devuelve ACTOR_BUSY contra uno mismo.
+      excludeClientReferencePrefix: req.query.publishGroupId || null,
     });
 
     res.json({

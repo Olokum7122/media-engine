@@ -113,11 +113,16 @@ async function markRejected(mediaId, reason, jobId = null) {
   const pool = await getPool();
   const result = await pool.request()
     .input('media_id', sql.UniqueIdentifier, mediaId)
-    .input('rejection_reason', sql.NVarChar(500), reason)
-    .input('job_id', sql.BigInt, jobId || null)
+    // Mismo desajuste que en sp_media_cancel: la firma instalada y la del repo
+    // (09_PROCEDURES_WORKER.sql:242) usan `@reason`, no `@rejection_reason`.
+    // Con el nombre equivocado ningún job podía marcarse como rechazado.
+    .input('reason', sql.NVarChar(500), reason)
     .execute('me.sp_media_mark_rejected');
 
-  return result.rowsAffected[0] > 0;
+  // Igual que en sp_media_cancel: SET NOCOUNT ON deja `rowsAffected` vacío y el
+  // rechazo se reportaba como fallido aunque se hubiera aplicado.
+  const affected = result.rowsAffected?.[0];
+  return typeof affected === 'number' ? affected > 0 : true;
 }
 
 /**

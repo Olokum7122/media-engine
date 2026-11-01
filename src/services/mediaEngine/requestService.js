@@ -76,10 +76,24 @@ async function cancel(mediaId, reason = null) {
   const pool = await getPool();
   const result = await pool.request()
     .input('media_id', sql.UniqueIdentifier, mediaId)
-    .input('rejection_reason', sql.NVarChar(500), reason || null)
+    // El SP instalado y el del repo se llaman `@media_id, @reason`. Aquí se enviaba
+    // `rejection_reason`, nombre que no existe en ninguno de los dos: TODA
+    // cancelación fallaba con "is not a parameter for procedure sp_media_cancel".
+    // Como el cliente se traga ese error, cada subida abortada dejaba su intake en
+    // 'received' y la guarda de concurrencia la contaba como trabajo en curso, de
+    // modo que el usuario quedaba bloqueado con "tu video anterior se está
+    // procesando" aunque no hubiera nada corriendo. MEDIDO 2026-11-01 contra
+    // producción: POST /api/media/:id/cancel devolvía 500 con ese texto.
+    .input('reason', sql.NVarChar(500), reason || null)
     .execute('me.sp_media_cancel');
 
-  return result.rowsAffected[0] > 0;
+  // El SP declara SET NOCOUNT ON, así que `rowsAffected` llega vacío aunque la
+  // cancelación se haya aplicado: comparar contra 0 devolvía false y la ruta
+  // respondía 404 «Media no encontrado o no se pudo cancelar» sobre una
+  // cancelación exitosa. El SP ya lanza MEDIA_NOT_FOUND cuando el media no
+  // existe, de modo que llegar aquí sin excepción ES la cancelación cumplida.
+  const affected = result.rowsAffected?.[0];
+  return typeof affected === 'number' ? affected > 0 : true;
 }
 
 /**
